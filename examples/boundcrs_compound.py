@@ -20,12 +20,58 @@ pyproj.__version__
 
 pyproj.proj_version_str
 
-pyproj.network.set_network_enabled(active=True)
+#pyproj.network.set_network_enabled(active=False) # False, since we are testing VDatum grids stored locally
 
-source_crs_wkt = 'COMPOUNDCRS["NAD83 / UTM zone 15N + NOAA Chart Datum",PROJCRS["NAD83 / UTM zone 15N",BASEGEOGCRS["NAD83",DATUM["North American Datum 1983",ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",4269]],CONVERSION["UTM zone 15N",METHOD["Transverse Mercator",ID["EPSG",9807]],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8801]],PARAMETER["Longitude of natural origin",-93,ANGLEUNIT["degree",0.0174532925199433],ID["EPSG",8802]],PARAMETER["Scale factor at natural origin",0.9996,SCALEUNIT["unity",1],ID["EPSG",8805]],PARAMETER["False easting",500000,LENGTHUNIT["metre",1],ID["EPSG",8806]],PARAMETER["False northing",0,LENGTHUNIT["metre",1],ID["EPSG",8807]]],CS[Cartesian,2],AXIS["(E)",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["(N)",north,ORDER[2],LENGTHUNIT["metre",1]],USAGE[SCOPE["Engineering survey, topographic mapping."],AREA["North America - between 96°W and 90°W - onshore and offshore. Canada - Manitoba; Nunavut; Ontario. United States (USA) - Arkansas; Illinois; Iowa; Kansas; Louisiana; Michigan; Minnesota; Mississippi; Missouri; Nebraska; Oklahoma; Tennessee; Texas; Wisconsin."],BBOX[25.61,-96,84,-90]],ID["EPSG",26915]],VERTCRS["NOAA Chart Datum",VDATUM["NOAA Chart Datum"],CS[vertical,1],AXIS["gravity-related height (H)",up,LENGTHUNIT["metre",1,ID["EPSG",9001]]]]]'
+source_crs_wkt = '''
+COMPOUNDCRS["NAD83 / UTM zone 15N + NOAA Chart Datum height",
+    PROJCRS["NAD83 / UTM zone 15N",
+        BASEGEOGCRS["NAD83(2011)",
+            DATUM["NAD83 (National Spatial Reference System 2011)",
+                ELLIPSOID["GRS 1980",6378137,298.257222101,
+                    LENGTHUNIT["metre",1]]],
+            PRIMEM["Greenwich",0,
+                ANGLEUNIT["degree",0.0174532925199433]],
+            ID["EPSG",6318]],
+        CONVERSION["UTM zone 15N",
+            METHOD["Transverse Mercator",
+                ID["EPSG",9807]],
+            PARAMETER["Latitude of natural origin",0,
+                ANGLEUNIT["degree",0.0174532925199433],
+                ID["EPSG",8801]],
+            PARAMETER["Longitude of natural origin",-93,
+                ANGLEUNIT["degree",0.0174532925199433],
+                ID["EPSG",8802]],
+            PARAMETER["Scale factor at natural origin",0.9996,
+                SCALEUNIT["unity",1],
+                ID["EPSG",8805]],
+            PARAMETER["False easting",500000,
+                LENGTHUNIT["metre",1],
+                ID["EPSG",8806]],
+            PARAMETER["False northing",0,
+                LENGTHUNIT["metre",1],
+                ID["EPSG",8807]]],
+        CS[Cartesian,2],
+            AXIS["(E)",east,
+                ORDER[1],
+                LENGTHUNIT["metre",1]],
+            AXIS["(N)",north,
+                ORDER[2],
+                LENGTHUNIT["metre",1]],
+        ID["EPSG",26915]],
+    VERTCRS["NOAA Chart Datum height",
+        VDATUM["NOAA Chart Datum",
+            ID["NOAA","VDatum","4.1.2 (2020-12-03)",
+                CITATION["N/CS11 vyperdatum"],
+                URI["https://vdatum.noaa.gov/download/data/"]]],
+        CS[vertical,1],
+            AXIS["gravity-related height (H)",up,
+                LENGTHUNIT["metre",1,
+                    ID["EPSG",9001]]]]]]'''
+
 source_crs = pyproj.CRS.from_wkt(source_crs_wkt)
 
-target_crs = pyproj.CRS('EPSG:6344').to_3d()
+#target_crs = pyproj.CRS('EPSG:6344').to_3d() # 2.5-D PROJCRS option: NAD83(2011) UTM zone 15N horizontal component with [GRS80] ellipsoid height
+target_crs = pyproj.CRS('EPSG:6319') # 3D geographic GEOGCRS option: NAD83(2011)
 
 """We need the files to reference for making the transformation will pull via FTP for this example."""
 
@@ -40,37 +86,42 @@ with ZipFile('vdatum.zip') as vdatum:
   vdatum.extractall()
 pyproj.datadir.append_data_dir('vdatum')
 
-pipeline_str = 'proj=pipeline inv step proj=vgridshift grids=core/geoid12b/g2012bu0.gtx step proj=vgridshift grids=TXlaggal01_8301/tss.gtx inv step proj=vgridshift grids=TXlaggal01_8301/mllw.gtx'
+os.listdir('.')
+
+pipeline_str = 'proj=pipeline step inv proj=vgridshift grids=core/geoid12b/g2012bu0.gtx step proj=vgridshift grids=TXlaggal01_8301/tss.gtx step inv proj=vgridshift grids=TXlaggal01_8301/mllw.gtx'
 mllw_to_NAD83 = pyproj.Transformer.from_pipeline(pipeline_str)
 
 coop_json = {}
 coop_json['$schema'] = target_crs.to_json_dict()['$schema']
 coop_json['type'] = 'Transformation'
-coop_json['name'] = 'MLLW to NAD83(2011)'
+coop_json['name'] = 'MLLW height to NAD83(2011) height'
 coop_json['source_crs'] = source_crs.to_json_dict()
 coop_json['target_crs'] = target_crs.to_json_dict()
 coop_json['method'] = mllw_to_NAD83.to_json_dict()['method']
-params = [{'name': 'Geoid (height correction) model file', 'value': 'core\\geoid12b\\g2012bu0.gtx'},
- {'name': 'TSS (height correction) model file', 'value': 'TXlaggal01_8301\\tss.gtx'},
- {'name': 'MLLW (height correction) model file', 'value': 'TXlaggal01_8301\\mllw.gtx'}]
-coop_json['parameters'] = params
+coop_json['parameters'] = [{'name': 'Geoid (height correction) model file', 'value': 'core/geoid12b/g2012bu0.gtx'},
+ {'name': 'TSS (height correction) model file', 'value': 'TXlaggal01_8301/tss.gtx'},
+ {'name': 'MLLW (height correction) model file', 'value': 'TXlaggal01_8301/mllw.gtx'}]
+#CRSError: Invalid coordinate operation string:
+#{'name': 'EPSG code for Interpolation CRS', 'value':6318, 'id':{'authority':'EPSG','code':1048}}
+coop_json['remarks'] = "Coordinates of grids (.gtx) are same as horizontal component of TARGETCRS system."
 coop = pyproj.crs.CoordinateOperation.from_json_dict(coop_json)
 
 mllw_as_boundcrs = pyproj.crs.BoundCRS(source_crs, target_crs, coop)
 print(mllw_as_boundcrs.to_wkt(version='WKT2_2019', pretty=True))
 
-"""
+# Compare/override BOUNDCRS construction above with explicit definition here to enable VERTCRS ID CITATION and URI, and ABRIDGEDTRANSFORMATION PARAMETER 'EPSG code for Interpolation CRS'
+bound_crs_wkt ='''
 BOUNDCRS[
     SOURCECRS[
-        COMPOUNDCRS["NAD83 / UTM zone 15N + NOAA Chart Datum",
+        COMPOUNDCRS["NAD83 / UTM zone 15N + NOAA Chart Datum height",
             PROJCRS["NAD83 / UTM zone 15N",
-                BASEGEOGCRS["NAD83",
-                    DATUM["North American Datum 1983",
+                BASEGEOGCRS["NAD83(2011)",
+                    DATUM["NAD83 (National Spatial Reference System 2011)",
                         ELLIPSOID["GRS 1980",6378137,298.257222101,
                             LENGTHUNIT["metre",1]]],
                     PRIMEM["Greenwich",0,
                         ANGLEUNIT["degree",0.0174532925199433]],
-                    ID["EPSG",4269]],
+                    ID["EPSG",6318]],
                 CONVERSION["UTM zone 15N",
                     METHOD["Transverse Mercator",
                         ID["EPSG",9807]],
@@ -97,61 +148,74 @@ BOUNDCRS[
                         ORDER[2],
                         LENGTHUNIT["metre",1]],
                 ID["EPSG",26915]],
-            VERTCRS["NOAA Chart Datum",
-                VDATUM["NOAA Chart Datum"],
+            VERTCRS["NOAA Chart Datum height",
+                VDATUM["NOAA Chart Datum",
+                    ID["NOAA","VDatum","4.1.2 (2020-12-03)",
+                        CITATION["N/CS11 vyperdatum"],
+                        URI["https://vdatum.noaa.gov/download/data/"]]],
                 CS[vertical,1],
                     AXIS["gravity-related height (H)",up,
                         LENGTHUNIT["metre",1,
                             ID["EPSG",9001]]]]]],
     TARGETCRS[
-        PROJCRS["NAD83(2011) / UTM zone 15N",
-            BASEGEOGCRS["NAD83(2011)",
-                DATUM["NAD83 (National Spatial Reference System 2011)",
-                    ELLIPSOID["GRS 1980",6378137,298.257222101,
-                        LENGTHUNIT["metre",1]]],
-                PRIMEM["Greenwich",0,
-                    ANGLEUNIT["degree",0.0174532925199433]],
-                ID["EPSG",6319]],
-            CONVERSION["UTM zone 15N",
-                METHOD["Transverse Mercator",
-                    ID["EPSG",9807]],
-                PARAMETER["Latitude of natural origin",0,
-                    ANGLEUNIT["degree",0.0174532925199433],
-                    ID["EPSG",8801]],
-                PARAMETER["Longitude of natural origin",-93,
-                    ANGLEUNIT["degree",0.0174532925199433],
-                    ID["EPSG",8802]],
-                PARAMETER["Scale factor at natural origin",0.9996,
-                    SCALEUNIT["unity",1],
-                    ID["EPSG",8805]],
-                PARAMETER["False easting",500000,
-                    LENGTHUNIT["metre",1],
-                    ID["EPSG",8806]],
-                PARAMETER["False northing",0,
-                    LENGTHUNIT["metre",1],
-                    ID["EPSG",8807]],
-                ID["EPSG",16015]],
-            CS[Cartesian,3],
-                AXIS["(E)",east,
-                    ORDER[1],
-                    LENGTHUNIT["metre",1,
-                        ID["EPSG",9001]]],
-                AXIS["(N)",north,
-                    ORDER[2],
-                    LENGTHUNIT["metre",1,
-                        ID["EPSG",9001]]],
-                AXIS["ellipsoidal height (h)",up,
-                    ORDER[3],
-                    LENGTHUNIT["metre",1,
-                        ID["EPSG",9001]]],
-            USAGE[
-                SCOPE["unknown"],
-                AREA["United States (USA) - between 96°W and 90°W onshore and offshore - Arkansas; Illinois; Iowa; Kansas; Louisiana; Michigan; Minnesota; Mississippi; Missouri; Nebraska; Oklahoma; Tennessee; Texas; Wisconsin."],
-                BBOX[25.61,-96.01,49.38,-90]],
-            REMARK["Promoted to 3D from EPSG:6344"]]],
+        GEOGCRS["NAD83(2011)",
+            DATUM["NAD83 (National Spatial Reference System 2011)",
+                ELLIPSOID["GRS 1980",6378137,298.257222101,
+                    LENGTHUNIT["metre",1]]],
+            PRIMEM["Greenwich",0,
+                ANGLEUNIT["degree",0.0174532925199433]],
+        CS[ellipsoidal,3],
+            AXIS["geodetic latitude (Lat)",north,
+                ORDER[1],
+                ANGLEUNIT["degree",0.0174532925199433]],
+            AXIS["geodetic longitude (Lon)",east,
+                ORDER[2],
+                ANGLEUNIT["degree",0.0174532925199433]],
+            AXIS["ellipsoidal height (h)",up,
+                ORDER[3],   
+                LENGTHUNIT["metre",1]],
+        USAGE[
+            SCOPE["Geodesy."],
+            AREA["Puerto Rico - onshore and offshore. United States (USA) onshore and offshore - Alabama; Alaska; Arizona; Arkansas; California; Colorado; Connecticut; Delaware; Florida; Georgia; Idaho; Illinois; Indiana; Iowa; Kansas; Kentucky; Louisiana; Maine; Maryland; Massachusetts; Michigan; Minnesota; Mississippi; Missouri; Montana; Nebraska; Nevada; New Hampshire; New Jersey; New Mexico; New York; North Carolina; North Dakota; Ohio; Oklahoma; Oregon; Pennsylvania; Rhode Island; South Carolina; South Dakota; Tennessee; Texas; Utah; Vermont; Virginia; Washington; West Virginia; Wisconsin; Wyoming. US Virgin Islands - onshore and offshore."],
+            BBOX[14.92,167.65,74.71,-63.88]],
+        ID["EPSG",6319]]],
     ABRIDGEDTRANSFORMATION["MLLW to NAD83(2011)",
         METHOD["PROJ-based operation method: proj=pipeline inv step proj=vgridshift grids=core/geoid12b/g2012bu0.gtx step proj=vgridshift grids=TXlaggal01_8301/tss.gtx inv step proj=vgridshift grids=TXlaggal01_8301/mllw.gtx"],
         PARAMETERFILE["Geoid (height correction) model file","core\geoid12b\g2012bu0.gtx"],
         PARAMETERFILE["TSS (height correction) model file","TXlaggal01_8301\tss.gtx"],
-        PARAMETERFILE["MLLW (height correction) model file","TXlaggal01_8301\mllw.gtx"]]]
-"""
+        PARAMETERFILE["MLLW (height correction) model file","TXlaggal01_8301\mllw.gtx"],
+        PARAMETER["EPSG code for Interpolation CRS",6318,ID["EPSG",1048]],
+        REMARK["Coordinates of grids (.gtx) are same as horizontal component of TARGETCRS system."]]]'''
+
+mllw_as_boundcrs = pyproj.CRS.from_wkt(bound_crs_wkt)
+
+# Transform from/to 3D NAD83(2011) is to/from BoundCRS's "Source CRS",
+# but horizontals component only--z just passes through unchanged.
+t = pyproj.Transformer.from_crs('EPSG:6319',mllw_as_boundcrs,always_xy=True)
+lon6319,lat6319,nad83_seafloor = -94.833768,29.604182,10.5 # middle of Galveston Bay; ERS seafloor elevation = 10.5m
+e_utm15N,n_utm15N,mllw = t.transform(lon6319,lat6319,nad83_seafloor)
+print(e_utm15N,n_utm15N,mllw)
+t = pyproj.Transformer.from_crs(mllw_as_boundcrs,'EPSG:6319',always_xy=True)
+lon6319,lat6319,ht6319 = t.transform(e_utm15N,n_utm15N,(mllw,))
+print(lon6319,lat6319,ht6319)
+print("VDatum v4.1.2 with Geoid12B override (Should be Geoid09): NAD83-MLLW=+37.561")
+
+print(mllw_as_boundcrs.target_crs)
+
+mllw_as_boundcrs.coordinate_operation.to_proj4()
+
+print(os.getcwd())
+print(os.listdir(os.getcwd()))
+print(os.listdir('/content/vdatum/TXlaggal01_8301'))
+print(os.listdir('/content/vdatum/core/geoid12b'))
+print(pyproj.datadir.get_data_dir())
+mllw_as_boundcrs.coordinate_operation.grids
+
+MLLW2NAD83 = pyproj.Transformer.from_pipeline(mllw_as_boundcrs.coordinate_operation.to_proj4())
+print(MLLW2NAD83.transform_bounds)
+
+print("The BoundCRS abridged transformation is applied to the Source CRS to yield coords in the Target CRS 'pivot' system.")
+print("https://proj.org/development/reference/cpp/crs.html")
+print("But our BoundCRS Source & Target both UTM, which implies MLLW2NAD83.transform(322424.0,3276331.0,37.561), but .gtx are geographic coords")
+print("(Recall: VDatum v4.1.2 with Geoid12B override (Should be Geoid09): (NAD83+10.5)-MLLW=+37.561)")
+MLLW2NAD83.transform(-94.83376840417361,29.60418254175799,37.561)
